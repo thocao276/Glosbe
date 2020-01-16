@@ -34,8 +34,11 @@ class Glosbe:
         profile.set_preference("http.response.timeout", 13)
         profile.set_preference("dom.max_script_run_time", 13)
         # profile.set_preference("browser.private.browsing.autostart", False)
+
         #  Off images
         # profile.set_preference("permissions.default.image", 2)
+
+        # Download PDF
         # profile.set_preference("browser.download.manager.showWhenStarting", False)
         # profile.set_preference("pdfjs.disabled", True)
         # profile.set_preference("browser.download.dir", '/home/thocao/Documents/Data_TrichYeu/DongThap/')
@@ -47,12 +50,6 @@ class Glosbe:
 
         if adsblock == True:
             profile.add_extension('lib/adblock_plus-3.7-an+fx.xpi')
-        # options = {
-        #     'proxy': {
-        #         'https': random_proxy[0],
-        #         'http': random_proxy[1]
-        #     }
-        # }
         print(random_proxy)
         proxy = Proxy()
         proxy.proxy_type = ProxyType.MANUAL
@@ -64,7 +61,6 @@ class Glosbe:
 
         web_driver = webdriver.Firefox(
             desired_capabilities=capabilities,
-            # seleniumwire_options=options,
             firefox_profile=profile,
             executable_path=r'lib/geckodriver-v0.26.0-linux64')
 
@@ -177,7 +173,7 @@ class Glosbe:
         :param web_driver:
         :param goto: url
         :return: list format ["en \t vi", ...]
-                error:  0: Empty comments
+                error:  0: Empty data
                         1: Success
                         2: Time out
         """
@@ -206,25 +202,22 @@ class Glosbe:
                     text = pair.find_elements_by_css_selector('div.span6')
                     en = str(text[0].text).strip()
                     vi = str(text[1].text).strip()
-                    content.append(en + '\t' + vi)
-            except Exception as e:
+                    content.append(en + '        ' + vi)
+            except NoSuchElementException as e:
                 print(e, goto)
+                break
 
             web_driver.get(goto + '?page=' + str(page))
-            for i in range(5):
-                try:
-                    web_driver.set_page_load_timeout(6)
-                except TimeoutException:
-                    web_driver.refresh()
-                    time.sleep(3)
-
             try:
-                if len(web_driver.find_elements_by_css_selector('#tm-tab-cont > #tmTable > .tableRow')) > 0:
-                    page += 1
-                else:
+                try:
+                    if len(web_driver.find_elements_by_css_selector('#tm-tab-cont > #tmTable > .tableRow')) > 0:
+                        page += 1
+                    else:
+                        return [line.strip() for line in set(content)], 1
+                except NoSuchElementException:
                     return [line.strip() for line in set(content)], 1
             except Exception as e:
-                print(e)
+                print(goto, e)
                 return [line.strip() for line in set(content)], 2
 
         return [line.strip() for line in set(content)], 1
