@@ -11,13 +11,25 @@ import requests
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from seleniumwire import webdriver
 from selenium.webdriver.common.proxy import Proxy, ProxyType
+from selenium.webdriver.firefox.options import Options
+from pyvirtualdisplay import Display
+
+def read_proxies_file(file_name):
+    """
+    Read file ip proxies
+    :param file_name:
+    :return: list proxies
+    """
+
+    lst_prox = []
+    for ii in open(file_name, 'r').readlines():
+        lst_prox.append('http://kimnt93:147828@' + ii.strip())
+    return lst_prox
 
 class Glosbe:
-    def __init__(self, existed, crawled, error, empty, proxies, save_dir):
+    def __init__(self, existed, crawled, proxies, save_dir):
         self.existed_url = existed
         self.crawled_url = crawled
-        self.error_url = error
-        self.empty_url = empty
         self.proxies = proxies
         self.save_dir = save_dir
 
@@ -29,8 +41,10 @@ class Glosbe:
         :param login: Need to login? If True, config email, password, url login under
         :return:
         """
+        display = Display(visible=0, size=(800, 600))
+        display.start()
+
         profile = webdriver.FirefoxProfile()
-        # profile.set_preference("browser.download.folderList", 2)
         profile.set_preference("http.response.timeout", 13)
         profile.set_preference("dom.max_script_run_time", 13)
         # profile.set_preference("browser.private.browsing.autostart", False)
@@ -39,6 +53,7 @@ class Glosbe:
         # profile.set_preference("permissions.default.image", 2)
 
         # Download PDF
+        # profile.set_preference("browser.download.folderList", 2)
         # profile.set_preference("browser.download.manager.showWhenStarting", False)
         # profile.set_preference("pdfjs.disabled", True)
         # profile.set_preference("browser.download.dir", '/home/thocao/Documents/Data_TrichYeu/DongThap/')
@@ -48,27 +63,28 @@ class Glosbe:
         # profile.set_preference("plugin.scan.Acrobat", "99.0")
         # profile.set_preference("plugin.scan.plid.all", False)
 
+        options = {
+            'proxy': {
+                'http': random_proxy,
+                'https': random_proxy,
+                'no_proxy': 'localhost,127.0.0.1:8080'
+            },
+            'connection_timeout': 15
+        }
+
         if adsblock == True:
             profile.add_extension('lib/adblock_plus-3.7-an+fx.xpi')
-        print(random_proxy)
-        proxy = Proxy()
-        proxy.proxy_type = ProxyType.MANUAL
-        proxy.http_proxy = random_proxy[0]
-        proxy.ssl_proxy = random_proxy[1]
-
-        capabilities = webdriver.DesiredCapabilities.FIREFOX
-        proxy.add_to_capabilities(capabilities)
 
         web_driver = webdriver.Firefox(
-            desired_capabilities=capabilities,
+            # desired_capabilities=capabilities,
+            seleniumwire_options=options,
             firefox_profile=profile,
             executable_path=r'lib/geckodriver-v0.26.0-linux64')
 
-        account = [i.split("\t") for i in open('account.txt', 'r').readlines()]
-
         if login == True:
+            account = [i.split("\t") for i in open('account.txt', 'r').readlines()]
             # LOGIN by temp-mail
-            web_driver.get('https://auth2.glosbe.com/login?returnUrl=http%3A%2F%2Fglosbe.com%2FloginRedirectInternal')
+            web_driver.get('https://auth2.glosbe.com/login')
             while 1:
                 acc = random.choice(account)
                 try:
@@ -77,7 +93,7 @@ class Glosbe:
                     web_driver.find_element_by_name('submit').click()
                     break
                 except NoSuchElementException as a:
-                    web_driver.get('https://auth2.glosbe.com/login?returnUrl=http%3A%2F%2Fglosbe.com%2FloginRedirectInternal')
+                    web_driver.get('https://auth2.glosbe.com/login')
 
         return web_driver
 
@@ -105,14 +121,14 @@ class Glosbe:
         for word in words:
             try:
                 key_word = word.find_element_by_css_selector('a').get_attribute('href')
-                if key_word not in self.existed_url and key_word not in self.crawled_url and key_word not in self.empty_url and key_word not in self.error_url:
+                if key_word not in self.existed_url and key_word not in self.crawled_url:
                     added += 1
                     self.existed_url.append(key_word)
                     # open(save_to + str(key_word).replace('https://glosbe.com/en/vi/', '') + '.url', 'a+', encoding='utf-8')
             except Exception as e:
-                print(e)
+                print('Check keyword in list urls', e)
                 pass
-        print('Added ' + str(added) + '/' + str(len(words)) + ' words')
+        # print('Added ' + str(added) + '/' + str(len(words)) + ' words')
         time.sleep(0.1)
 
     def recur_get_lst(self, random_proxy):
@@ -192,7 +208,7 @@ class Glosbe:
             else:
                 return [], 0
         except Exception as e:
-            print(e)
+            print('Check amount of elements - pair', e)
             return [], 0
 
         while page > 0:
@@ -240,8 +256,8 @@ class Glosbe:
 #     recur_get_lst(driver, rnd_proxy)
 #     driver.quit()
 #     rnd_proxy = random.choices(proxies, k=2)
-
-# Get Example with keyword
+#
+# # Get Example with keyword
 # need_to_crawl = []
 # done = [('https://glosbe.com/en/vi/' + i.replace("DONE/", '').replace(".url", '')) for i in glob.glob('DONE/*.url')]
 # for i in DONE_url:
@@ -249,7 +265,7 @@ class Glosbe:
 #         need_to_crawl.append(i)
 # need_to_crawl.sort()
 # for i in need_to_crawl:
-#     .get_content(i, save_dir + i.replace('https://glosbe.com/en/vi/', '') + '.url')
+#     i.get_content(i, save_dir + i.replace('https://glosbe.com/en/vi/', '') + '.url')
 
 # Delete 25 first rows
 # for i in glob.glob('DONE/*.url'):

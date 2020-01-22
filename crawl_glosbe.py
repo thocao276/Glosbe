@@ -1,5 +1,5 @@
+import datetime
 import glob
-import os
 import random
 import time
 
@@ -12,7 +12,7 @@ import time
     * There are maximum 500.000 lines per file
     * Format: [en]<'        '>[vi] (8 spaces)
  Loop with new url in Existed_url
- Sleep 2 sec per 5 min
+ Sleep 10s per 5min
  
  FILES EXPLAINS:
     main.py             Class Glosbe
@@ -23,20 +23,7 @@ import time
     url_existed.txt     Contain new urls but haven't crawled yet
 """
 
-from main import Glosbe
-
-
-def read_proxies_file(file_name):
-    """
-    Read file ip proxies
-    :param file_name:
-    :return: list proxies
-    """
-
-    lst_prox = []
-    for ii in open(file_name, 'r').readlines():
-        lst_prox.append('https://kimnt93:147828@' + ii.strip())
-    return lst_prox
+from main import Glosbe, read_proxies_file
 
 
 def find_file_name(path):
@@ -67,36 +54,40 @@ wr_empty = open(LOG_FOLDER + 'url_empty.txt', 'w')
 
 url_existed = [line for line in open(LOG_FOLDER + 'url_existed.txt', 'r').readlines() if line.strip()]
 url_crawled = [line for line in open(LOG_FOLDER + 'url_crawled.txt', 'r').readlines() if line.strip()]
-url_errors = [line for line in open(LOG_FOLDER + 'url_errors.txt', 'r').readlines() if line.strip()]
-url_empty = [line for line in open(LOG_FOLDER + 'url_empty.txt', 'r').readlines() if line.strip()]
+for line in open(LOG_FOLDER + 'url_errors.txt', 'r').readlines():
+    if line.strip():
+        url_crawled.append(line)
+for line in open(LOG_FOLDER + 'url_empty.txt', 'r').readlines():
+    if line.strip():
+        url_crawled.append(line)
 
 f = open(LOG_FOLDER + 'url_existed.txt', 'w')
 for line in url_existed:
     f.write(line + '\n')
 f.close()
-# wr_crawled = open('url_crawled.txt', 'a')
-if len(url_existed) == 0:
-    raise TypeError("There aren't URLs to crawl!")
+
+wr_crawled = open('url_crawled.txt', 'a')
 
 proxies = read_proxies_file('proxies.txt')
-rnd_proxy = random.choices(proxies, k=2)
+rnd_proxy = random.choice(proxies)
 counter_file_name = find_file_name(save_dir)
 
 writer = open(create_file_name(save_dir, counter_file_name), 'a')
 line_in_file = len(open(create_file_name(save_dir, counter_file_name), 'r').readlines())
 
 for i in url_existed:
-    if i in url_crawled or i in url_empty or i in url_errors:
+    if i in url_crawled:
         url_existed.pop(url_existed.index(i))
 
-# for i in url_existed:
-#     DONE_url.append('https://glosbe.com/en/vi/' + i.replace("URL/", '').replace(".url", ''))
-# print(DONE_url)
-
-glosbe = Glosbe(existed=url_existed, crawled=url_crawled, empty=url_empty, error=url_errors, proxies=proxies,
-                save_dir=save_dir)
-driver = glosbe.create_driver(rnd_proxy, login=True, adsblock=True)
+rnd_proxy = random.choice(proxies)
+print(rnd_proxy)
+glosbe = Glosbe(existed=url_existed, crawled=url_crawled, proxies=proxies, save_dir=save_dir)
+driver = glosbe.create_driver(rnd_proxy, login=False, adsblock=False)
 index = 0
+
+if len(glosbe.existed_url) == 0:
+    glosbe.get_new_keywords(driver, goto=glosbe.crawled_url[-1])
+    # raise TypeError("There aren't URLs to crawl!")
 
 while index < len(glosbe.existed_url):
     try:
@@ -106,18 +97,20 @@ while index < len(glosbe.existed_url):
         # Get data on current keywords page
         content, status = glosbe.get_content(driver, goto=glosbe.existed_url[index])
         # Process result
-            # ERROR
-        if status == 2:
-            glosbe.error_url.append(glosbe.existed_url[index])
-            wr_errors.write(glosbe.existed_url[index].strip() + "\n")
+        print(glosbe.existed_url[index].strip(), len(content))
+        open(LOG_FOLDER + 'url_visited.log', 'a+').write(datetime.now().strftime("%d/%M/%Y, %H:%M:%S") + '    ' + str(len(content)) + '    ' + glosbe.existed_url[index].strip())
+        # Process result)
+        # Empty
+        if status == 0 or len(content) == 0:  # status == 0
+            open(LOG_FOLDER + 'url_empty.txt', 'a+').write(glosbe.existed_url[index].strip() + "\n")
             # OK
         elif status == 1:
-            glosbe.crawled_url.append(glosbe.existed_url[index])
             open(LOG_FOLDER + 'url_crawled.txt', 'a+').write(glosbe.existed_url[index].strip() + "\n")
-            # Empty
-        else:  # status == 0
-            glosbe.empty_url.append(glosbe.existed_url[index])
-            wr_empty.write(glosbe.existed_url[index].strip() + "\n")
+            # ERROR
+        else:
+            open(LOG_FOLDER + 'url_errors.txt', 'a+').write(glosbe.existed_url[index].strip() + "\n")
+
+        glosbe.crawled_url.append(glosbe.existed_url[index])
         glosbe.existed_url.pop(index)
 
         # Write to file
@@ -139,19 +132,28 @@ while index < len(glosbe.existed_url):
             f = open(LOG_FOLDER + 'url_existed.txt', 'w')
             for line in set(glosbe.existed_url):
                 f.write(line.strip() + "\n")
-            time.sleep(2)
+            time.sleep(10)
+            f.close()
 
-        rnd_proxy = random.choices(proxies, k=2)
-        driver = glosbe.create_driver(rnd_proxy, login=True, adsblock=True)
+        rnd_proxy = random.choice(proxies)
+        driver = glosbe.create_driver(rnd_proxy, login=True, adsblock=False)
     except:
         f = open(LOG_FOLDER + 'url_existed.txt', 'w')
         for line in set(glosbe.existed_url):
             f.write(line.strip() + '\n')
 
+        f.close()
         driver.quit()
-        driver = glosbe.create_driver(rnd_proxy, login=True, adsblock=True)
 
-        glosbe.error_url.append(glosbe.existed_url[index])
+        glosbe.crawled_url.append(glosbe.existed_url[index])
         wr_errors.write(glosbe.existed_url[index].strip() + "\n")
         glosbe.existed_url.pop(index)
+
+        driver = glosbe.create_driver(rnd_proxy, login=True, adsblock=False)
+    finally:
+        f = open(LOG_FOLDER + 'url_existed.txt', 'w')
+        for line in set(glosbe.existed_url):
+            f.write(line.strip() + '\n')
+        f.close()
+
 raise TypeError("There aren't URLs to crawl!")
