@@ -6,13 +6,16 @@ import re
 import time
 from builtins import print
 from urllib.parse import urlparse
-
+# import pickle
 import requests
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from seleniumwire import webdriver
 from selenium.webdriver.common.proxy import Proxy, ProxyType
 from selenium.webdriver.firefox.options import Options
-from pyvirtualdisplay import Display
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 def read_proxies_file(file_name):
     """
@@ -33,7 +36,7 @@ class Glosbe:
         self.proxies = proxies
         self.save_dir = save_dir
 
-    def create_driver(self, random_proxy, login, adsblock):
+    def create_driver(self, random_proxy, adsblock):
         """
         Create config firefox browser
         :param adsblock: Just install first time
@@ -41,8 +44,7 @@ class Glosbe:
         :param login: Need to login? If True, config email, password, url login under
         :return:
         """
-        display = Display(visible=0, size=(800, 600))
-        display.start()
+        # print(random_proxy)
 
         profile = webdriver.FirefoxProfile()
         profile.set_preference("http.response.timeout", 13)
@@ -56,7 +58,7 @@ class Glosbe:
         # profile.set_preference("browser.download.folderList", 2)
         # profile.set_preference("browser.download.manager.showWhenStarting", False)
         # profile.set_preference("pdfjs.disabled", True)
-        # profile.set_preference("browser.download.dir", '/home/thocao/Documents/Data_TrichYeu/DongThap/')
+        # profile.set_preference("browser.download.dir", '/home/thocao/Documents/Data')
         # profile.set_preference("browser.helperApps.neverAsk.saveToDisk", "application/pdf")
 
         # Unable open pdf files in browser
@@ -66,10 +68,10 @@ class Glosbe:
         options = {
             'proxy': {
                 'http': random_proxy,
-                'https': random_proxy,
-                'no_proxy': 'localhost,127.0.0.1:8080'
+                'https': random_proxy
+                # 'no_proxy': 'localhost,127.0.0.1:8080'
             },
-            'connection_timeout': 15
+            'connection_timeout': 20
         }
 
         if adsblock == True:
@@ -81,21 +83,24 @@ class Glosbe:
             firefox_profile=profile,
             executable_path=r'lib/geckodriver-v0.26.0-linux64')
 
-        if login == True:
-            account = [i.split("\t") for i in open('account.txt', 'r').readlines()]
-            # LOGIN by temp-mail
-            web_driver.get('https://auth2.glosbe.com/login')
-            while 1:
-                acc = random.choice(account)
-                try:
-                    web_driver.find_element_by_css_selector('#username').send_keys(str(acc[0]))
-                    web_driver.find_element_by_css_selector('#password').send_keys(str(acc[1]))
-                    web_driver.find_element_by_name('submit').click()
-                    break
-                except NoSuchElementException as a:
-                    web_driver.get('https://auth2.glosbe.com/login')
-
+        # web_driver.get('https://whatismyipaddress.com/')
+        # print(random_proxy, web_driver.find_element_by_css_selector('#ipv4 > a').get_attribute('href'))
         return web_driver
+
+    def login(self, web_driver):
+        account = [i.split("\t") for i in open('account.txt', 'r').readlines()]
+        # LOGIN by temp-mail
+        web_driver.get('https://auth2.glosbe.com/login')
+        while 1:
+            acc = random.choice(account)
+            try:
+                web_driver.find_element_by_css_selector('#username').send_keys(str(acc[0]))
+                web_driver.find_element_by_css_selector('#password').send_keys(str(acc[1]))
+                web_driver.find_element_by_name('submit').click()
+                # pickle.dump( web_driver.get_cookies() , open("cookies.pkl","wb"))
+                break
+            except:
+                web_driver.get('https://auth2.glosbe.com/login')
 
     def get_new_keywords(self, web_driver, goto):
         """
@@ -121,6 +126,8 @@ class Glosbe:
         for word in words:
             try:
                 key_word = word.find_element_by_css_selector('a').get_attribute('href')
+                if "%2F%2F" in key_word or "%252F%252F" in key_word:
+                    continue
                 if key_word not in self.existed_url and key_word not in self.crawled_url:
                     added += 1
                     self.existed_url.append(key_word)
@@ -131,46 +138,46 @@ class Glosbe:
         # print('Added ' + str(added) + '/' + str(len(words)) + ' words')
         time.sleep(0.1)
 
-    def recur_get_lst(self, random_proxy):
-        """
-        Recursive get new keywords in current page then append list need to crawl
-        :param web_driver:
-        :param random_proxy: list includes 2 ip proxies
-        :return:
-        """
-        idx = len(self.existed_url) - random.choice(range(1, 9))
-        web_driver = self.create_driver(random_proxy=random_proxy, login=False, adsblock=False)
-        try:
-            try:
-                if web_driver.find_element_by_css_selector('.g-recaptcha').get_attribute('data-sitekey'):
-                    f = open('URL_crawled.txt', 'w', encoding='utf-8')
-                    for ix in self.existed_url:
-                        f.write(ix + "\n")
-                    f.close()
-                    web_driver.quit()
-                    print('IP is blocked.')
-                    open('proxy_err.txt', 'a+').write(str(datetime.datetime.now()) + '\t' + ','.join(random_proxy) + '\n')
-                    return
-            except:
-                pass
-            loop = 0
-            while round(time.time() % 60) > 4 or loop < 5:
-                while idx >= len(self.existed_url):
-                    idx -= random.choice(range(1, 4))
-                if self.get_new_keywords(web_driver, goto=self.existed_url[idx]) == 0:
-                    idx -= 1
-                    loop += 1
-                else:
-                    idx += 10
-                #  Write proxies when can't get elements 4 times
-                if loop > 4:
-                    open('proxy_err.txt', 'a+').write(str(datetime.datetime.now()) + '\t' + ','.join(random_proxy) + '\n')
-
-        except:
-            f = open('URL_crawled.txt', 'w', encoding='utf-8')
-            for ix in self.existed_url:
-                f.write(ix + "\n")
-            f.close()
+    # def recur_get_lst(self, random_proxy):
+    #     """
+    #     Recursive get new keywords in current page then append list need to crawl
+    #     :param web_driver:
+    #     :param random_proxy: list includes 2 ip proxies
+    #     :return:
+    #     """
+    #     idx = len(self.existed_url) - random.choice(range(1, 9))
+    #     web_driver = self.create_driver(random_proxy=random_proxy, adsblock=False)
+    #     try:
+    #         try:
+    #             if web_driver.find_element_by_css_selector('.g-recaptcha').get_attribute('data-sitekey'):
+    #                 f = open('URL_crawled.txt', 'w', encoding='utf-8')
+    #                 for ix in self.existed_url:
+    #                     f.write(ix + "\n")
+    #                 f.close()
+    #                 web_driver.quit()
+    #                 print('IP is blocked.')
+    #                 open('proxy_err.txt', 'a+').write(str(datetime.datetime.now()) + '\t' + ','.join(random_proxy) + '\n')
+    #                 return
+    #         except:
+    #             pass
+    #         loop = 0
+    #         while round(time.time() % 60) > 4 or loop < 5:
+    #             while idx >= len(self.existed_url):
+    #                 idx -= random.choice(range(1, 4))
+    #             if self.get_new_keywords(web_driver, goto=self.existed_url[idx]) == 0:
+    #                 idx -= 1
+    #                 loop += 1
+    #             else:
+    #                 idx += 10
+    #             #  Write proxies when can't get elements 4 times
+    #             if loop > 4:
+    #                 open('proxy_err.txt', 'a+').write(str(datetime.datetime.now()) + '\t' + ','.join(random_proxy) + '\n')
+    #
+    #     except:
+    #         f = open('URL_crawled.txt', 'w', encoding='utf-8')
+    #         for ix in self.existed_url:
+    #             f.write(ix + "\n")
+    #         f.close()
 
     def process_content(self, content):
         """
@@ -197,15 +204,14 @@ class Glosbe:
         page = 2
         # web_driver.get(goto)
         try:
-            web_driver.set_page_load_timeout(6)
+            # web_driver.set_page_load_timeout(15)
+            WebDriverWait(web_driver, 17).until(EC.presence_of_element_located((By.ID, "tm-tab-cont")))
         except TimeoutException:
-            web_driver.quit()
+            # web_driver.quit()
             return [], 2
 
         try:
-            if len(web_driver.find_elements_by_css_selector('#tm-tab-cont > #tmTable > .tableRow')) > 0:
-                pass
-            else:
+            if len(web_driver.find_elements_by_css_selector('#tm-tab-cont > #tmTable > .tableRow')) < 1:
                 return [], 0
         except Exception as e:
             print('Check amount of elements - pair', e)
@@ -216,18 +222,23 @@ class Glosbe:
                 pairs = web_driver.find_elements_by_css_selector('#tm-tab-cont > #tmTable > .tableRow')
                 for pair in pairs:
                     text = pair.find_elements_by_css_selector('div.span6')
-                    en = str(text[0].text).strip()
-                    vi = str(text[1].text).strip()
-                    content.append(en + '        ' + vi)
+                    ori = str(text[0].find_element_by_css_selector('span span').text).strip()
+                    trans = str(text[1].find_element_by_css_selector('span span').text).strip()
+                    # print(ori, '***=***', trans)
+                    content.append(ori + '        ' + trans)
             except NoSuchElementException as e:
                 print(e, goto)
-                break
-
-            web_driver.get(goto + '?page=' + str(page))
+                return [line.strip() for line in set(content)], 1
+            try:
+                web_driver.get(goto + '?page=' + str(page))
+            except TimeoutException:
+                webdriver.ActionChains(web_driver).send_keys(Keys.ESCAPE).perform()
             try:
                 try:
                     if len(web_driver.find_elements_by_css_selector('#tm-tab-cont > #tmTable > .tableRow')) > 0:
                         page += 1
+                        if page == 4 and '>>' in web_driver.find_element_by_css_selector('#translationExamples > div.pagination').text:
+                            self.login(web_driver)
                     else:
                         return [line.strip() for line in set(content)], 1
                 except NoSuchElementException:
