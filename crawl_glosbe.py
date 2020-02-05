@@ -3,12 +3,14 @@ from datetime import datetime
 import glob
 import time
 from pyvirtualdisplay import Display
+import threading
+from main import Glosbe, read_proxies_file
 
 """
- Crawl pair of bilingual sentences en <=> vi from Glosbe.com
- Start at keyword "-" OR urls in url_existed.txt
+ Crawl pair of bilingual sentences from Glosbe.com
+ Start at keyword "-" OR the first url in url_existed.txt
  Append new keywords on current page to Existed_url
- Crawl all pair of bilingual sentences and write to "output / [en_vi/vi_en] / <file_number>.data" 
+ Crawl all pair of bilingual sentences and write to "output / original_destination / <file_number>.data" 
     * File_number: int[0, 1,..]
     * There are maximum 500.000 lines per file
     * Format: [en]<'        '>[vi] (8 spaces)
@@ -23,9 +25,6 @@ from pyvirtualdisplay import Display
     url_errors.txt      Occur some errors (Ex: 502 respond)
     url_existed.txt     Contain new urls but haven't crawled yet
 """
-
-from main import Glosbe, read_proxies_file
-
 
 def find_file_name(path):
     """
@@ -50,173 +49,206 @@ def create_file_name(path, num):
     return path + str(num) + '.data'
 
 
-arg = sys.argv
-if len(arg) != 4:
-    raise TypeError('Must be: python3 crawl_glosbe.py [from] [translate to] [skip proxy]')
+def write_log(filename, content, istimestone):
+    if istimestone:
+        open(filename, 'a+').write(content.strip() + '\n')
+    else:
+        open(filename, 'a+').write(datetime.now().strftime("%d/%m/%Y, %H:%M:%S") + '    ' + content.strip() + '\n')
 
-ORI = arg[1]
-TRANS = arg[2]
-try:
-    skip = int(arg[3])
-    if skip > 10:
-        raise TypeError('Must be Integer and less than 10')
-except:
-    raise TypeError('Must be Integer')
 
-display = Display(visible=0, size=(800, 600))
-display.start()
+def run(arg):
+    if len(arg) != 4:
+        raise TypeError('Must be: python3 crawl_glosbe.py [original] [destination] [step proxy] \n Ex: python3 crawl_glosbe.py en vi 1')
+        # arg = ['', 'zh', 'vi', '1']
+    original = arg[1]
+    destination = arg[2]
+    try:
+        start_at = int(arg[3])
+        if start_at > 10 or start_at < 1:
+            raise TypeError('Must be Integer and between 1 and 10')
+    except:
+        raise TypeError('Must be Integer')
 
-# Create folder
-LOG_FOLDER = 'log/' + ORI + '_' + TRANS + '/'
-save_dir = 'output/' + ORI + '_' + TRANS + '/'
+    display = Display(visible=0, size=(800, 600))
+    display.start()
 
-if not os.path.isdir('log/' + ORI + '_' + TRANS):
-    os.mkdir('log/' + ORI + '_' + TRANS)
-    open(LOG_FOLDER + 'url_crawled.txt', 'w+')
-    open(LOG_FOLDER + 'url_existed.txt', 'w+')
-    open(LOG_FOLDER + 'url_errors.txt', 'w+')
-    open(LOG_FOLDER + 'url_empty.txt', 'w+')
-    open(LOG_FOLDER + 'url_visited.log', 'w+')
-if not os.path.isdir('output/' + ORI + '_' + TRANS):
-    os.mkdir('output/' + ORI + '_' + TRANS)
-    open(save_dir + '0.data', 'w+')
+    # Create folder
+    LOG_FOLDER = 'log/' + original + '_' + destination + '/'
+    save_dir = 'output/' + original + '_' + destination + '/'
 
-wr_errors = open(LOG_FOLDER + 'url_errors.txt', 'w')
-wr_empty = open(LOG_FOLDER + 'url_empty.txt', 'w')
+    if not os.path.isdir('log/' + original + '_' + destination):
+        os.mkdir('log/' + original + '_' + destination)
+        open(LOG_FOLDER + 'url_crawled.txt', 'w+')
+        open(LOG_FOLDER + 'url_existed.txt', 'w+')
+        open(LOG_FOLDER + 'url_errors.txt', 'w+')
+        open(LOG_FOLDER + 'url_empty.txt', 'w+')
+        open(LOG_FOLDER + 'url_visited.log', 'w+')
+    if not os.path.isdir('output/' + original + '_' + destination):
+        os.mkdir('output/' + original + '_' + destination)
+        open(save_dir + '0.data', 'w+')
 
-url_existed = [line for line in open(LOG_FOLDER + 'url_existed.txt', 'r').readlines() if line.strip()]
-url_crawled = [line for line in open(LOG_FOLDER + 'url_crawled.txt', 'r').readlines() if line.strip()]
-for line in open(LOG_FOLDER + 'url_errors.txt', 'r').readlines():
-    if line.strip():
-        url_crawled.append(line)
-for line in open(LOG_FOLDER + 'url_empty.txt', 'r').readlines():
-    if line.strip():
-        url_crawled.append(line)
+    # wr_errors = open(LOG_FOLDER + 'url_errors.txt', 'a+')
+    # wr_empty = open(LOG_FOLDER + 'url_empty.txt', 'a+')
+    # wr_crawled = open(LOG_FOLDER + 'url_crawled.txt', 'a+')
 
-f = open(LOG_FOLDER + 'url_existed.txt', 'w')
-for line in set(url_existed):
-    f.write(line + '\n')
-f.close()
+    url_existed = [line.strip() for line in set(open(LOG_FOLDER + 'url_existed.txt', 'r').readlines()) if line.strip()]
+    url_crawled = [line.strip() for line in set(open(LOG_FOLDER + 'url_crawled.txt', 'r').readlines()) if line.strip()]
+    for line in set(open(LOG_FOLDER + 'url_errors.txt', 'r').readlines()):
+        if line.strip():
+            url_crawled.append(line.strip())
+    for line in set(open(LOG_FOLDER + 'url_empty.txt', 'r').readlines()):
+        if line.strip():
+            url_crawled.append(line.strip())
 
-wr_crawled = open(LOG_FOLDER + 'url_crawled.txt', 'a')
+    f = open(LOG_FOLDER + 'url_existed.txt', 'w')
+    for line in set(url_existed):
+        f.write(line + '\n')
+    f.close()
 
-proxies = read_proxies_file('proxies.txt')
-rnd_proxy = proxies[skip]
-counter_file_name = find_file_name(save_dir)
+    proxies = read_proxies_file('proxies.txt')
+    rnd_proxy = proxies[start_at]
+    counter_file_name = find_file_name(save_dir)
 
-writer = open(create_file_name(save_dir, counter_file_name), 'a')
-line_in_file = len(open(create_file_name(save_dir, counter_file_name), 'r').readlines())
+    writer = open(create_file_name(save_dir, counter_file_name), 'a')
+    line_in_file = len(open(create_file_name(save_dir, counter_file_name), 'r').readlines())
 
-for i in url_existed:
-    if i in url_crawled:
-        url_existed.pop(url_existed.index(i))
+    for i in url_existed:
+        if i in url_crawled:
+            url_existed.pop(url_existed.index(i))
 
-# rnd_proxy = random.choice(proxies)
-# print(rnd_proxy)
-glosbe = Glosbe(existed=url_existed, crawled=url_crawled, proxies=proxies, save_dir=save_dir)
-driver = glosbe.create_driver(proxies[0], adsblock=True)
-index = 0
-"""
-When there isn't any url in existed_url to crawl, get new keywords from last keyword in crawled_url
-"""
-idx = -1
-if len(glosbe.existed_url) == 0 and len(glosbe.crawled_url) == 0:
-    glosbe.existed_url.append('https://glosbe.com/' + ORI + '/' + TRANS + '/-')
+    # rnd_proxy = random.choice(proxies)
+    # print(rnd_proxy)
+    glosbe = Glosbe(existed=url_existed, crawled=url_crawled, proxies=proxies, save_dir=save_dir)
+    driver = glosbe.create_driver(rnd_proxy, adsblock=True)
+    index = 0
+    """
+    When there isn't any url in existed_url to crawl, get new keywords from last keyword in crawled_url
+    """
+    idx = -1
+    if len(glosbe.existed_url) == 0 and len(glosbe.crawled_url) == 0:
+        glosbe.existed_url.append('https://glosbe.com/' + original + '/' + destination + '/-')
 
-while len(glosbe.existed_url) == 0 and len(glosbe.crawled_url) > 0:
-    glosbe.get_new_keywords(driver, goto=glosbe.crawled_url[idx])
-    idx -= 1
-    # raise TypeError("There aren't URLs to crawl!")
-del idx
+    while len(glosbe.existed_url) == 0 and len(glosbe.crawled_url) > 0:
+        error = glosbe.get_new_keywords(driver, goto=glosbe.crawled_url[idx])
+        if len(error) > 0:
+            for i in error:
+                write_log(LOG_FOLDER + 'errors.log', i, True)
+        idx -= 1
+        # raise TypeError("There aren't URLs to crawl!")
+    del idx
 
-if "%2F%2F" in glosbe.existed_url[index] or "%252F%252F" in glosbe.existed_url[index]:
-    open(LOG_FOLDER + 'url_errors.txt', 'a+').write(glosbe.existed_url[index].strip() + "\n")
-    # print(datetime.now().strftime("%d/%m/%Y, %H:%M:%S") + '    ' + str(len(content)) + '\t' + glosbe.existed_url[index][18:])
-    glosbe.crawled_url.append(glosbe.existed_url[index])
-    glosbe.existed_url.pop(index)
+    if "%2F%2F" in glosbe.existed_url[index] or "%252F%252F" in glosbe.existed_url[index]:
+        open(LOG_FOLDER + 'url_errors.txt', 'a+').write(glosbe.existed_url[index].strip() + "\n")
+        # print(datetime.now().strftime("%d/%m/%Y, %H:%M:%S") + '    ' + str(len(content)) + '\t' + glosbe.existed_url[index][18:])
+        # print('Popped1 ', url_existed[index])
+        glosbe.move_crawled(index)
 
-while index < len(glosbe.existed_url):
-    for i in range(10):
-        try:
-            # driver.get('https://whatismyipaddress.com/')
+    while index < len(glosbe.existed_url):
+        for i in range(10):
+            try:
+                # driver.get('https://whatismyipaddress.com/')
 
-            # Get new keywords on current page
-            glosbe.get_new_keywords(driver, goto=glosbe.existed_url[index])
+                # Get new keywords on current page
+                error = glosbe.get_new_keywords(driver, goto=glosbe.existed_url[index])
+                if len(error) > 0:
+                    for i in error:
+                        write_log(LOG_FOLDER + 'errors.log', i, True)
 
-            # Get data on current keywords page
-            content, status = glosbe.get_content(driver, goto=glosbe.existed_url[index])
+                # Get data on current keywords page
+                content, status, error = glosbe.get_content(driver, goto=glosbe.existed_url[index])
 
-            # Process result
-            # print(glosbe.existed_url[index].strip()[25:], len(content))
-            open(LOG_FOLDER + 'url_visited.log', 'a+').write(
-                datetime.now().strftime("%d/%m/%Y, %H:%M:%S") + '    ' + str(len(content)) + '    ' +
-                glosbe.existed_url[
-                    index].strip() + '\n')
-            # Process result)
-            # Empty
-            if status == 0 or len(content) == 0:  # status == 0
-                open(LOG_FOLDER + 'url_empty.txt', 'a+').write(glosbe.existed_url[index].strip() + "\n")
+                # Process result
+                # print(glosbe.existed_url[index].strip()[25:], len(content))
+                write_log(LOG_FOLDER + 'url_visited.log',
+                          str(len(content)) + '    ' + glosbe.existed_url[index].strip() + '\n', False)
+                # Process result)
+                # Empty
+                if status == 0 or len(content) == 0:  # status == 0
+                    open(LOG_FOLDER + 'url_empty.txt', 'a+').write(glosbe.existed_url[index].strip() + "\n")
                 # OK
-            elif status == 1:
-                open(LOG_FOLDER + 'url_crawled.txt', 'a+').write(glosbe.existed_url[index].strip() + "\n")
+                elif len(content) > 1:
+                    open(LOG_FOLDER + 'url_crawled.txt', 'a+').write(glosbe.existed_url[index].strip() + "\n")
                 # ERROR
-            else:
-                open(LOG_FOLDER + 'url_errors.txt', 'a+').write(glosbe.existed_url[index].strip() + "\n")
-
-            print(
-                datetime.now().strftime("%d/%m/%Y, %H:%M:%S") + '    ' + str(len(content)) + '\t' + glosbe.existed_url[
-                                                                                                        index][18:])
-            glosbe.crawled_url.append(glosbe.existed_url[index])
-            glosbe.existed_url.pop(index)
-
-            # Write to file
-            for line in content:
-                if line_in_file <= 500000:
-                    if line.strip() != '':
-                        writer.write(line.strip() + '\n')
-                        line_in_file += 1
                 else:
-                    line_in_file = 0
-                    writer.close()
-                    counter_file_name += 1
-                    writer = open(create_file_name(save_dir, counter_file_name), 'a')
-                    writer.write(line.strip() + '\n')
-            # driver.quit()
-            # index += 1
+                    open(LOG_FOLDER + 'url_errors.txt', 'a+').write(glosbe.existed_url[index].strip() + "\n")
 
-            if round(time.time() % 300) < 5:
+                if len(error) > 0:
+                    for i in error:
+                        write_log(LOG_FOLDER + 'errors.log', i, True)
+
+                # print(datetime.now().strftime("%d/%m/%Y, %H:%M:%S") + '    ' + str(len(content)) + '\t' + glosbe.existed_url[index][18:])
+                # print('Popped2 ', url_existed[index])
+                glosbe.move_crawled(index)
+
+                # Write to file
+                for line in content:
+                    if line_in_file <= 500000:
+                        if line.strip() != '':
+                            writer.write(line.strip() + '\n')
+                            line_in_file += 1
+                    else:
+                        line_in_file = 0
+                        writer.close()
+                        counter_file_name += 1
+                        writer = open(create_file_name(save_dir, counter_file_name), 'a')
+                        writer.write(line.strip() + '\n')
+                # driver.quit()
+                # index += 1
+
+                if round(time.time() % 300) < 5:
+                    f = open(LOG_FOLDER + 'url_existed.txt', 'w')
+                    for line in set(glosbe.existed_url):
+                        f.write(line.strip() + "\n")
+                    time.sleep(60)
+                    f.close()
+            except Exception as e:
+                write_log(LOG_FOLDER + 'errors.log', 'crawl_glosbe.py    run()    main loop    ' + str(e), False)
+                # print(e)
+                # print(proxies[idx % len(proxies)], glosbe.existed_url[index])
+
+                # print('Popped3 ', url_existed[index])
+                glosbe.move_crawled(index)
+
                 f = open(LOG_FOLDER + 'url_existed.txt', 'w')
                 for line in set(glosbe.existed_url):
-                    f.write(line.strip() + "\n")
-                time.sleep(10)
+                    f.write(line.strip() + '\n')
+
                 f.close()
-        except Exception as e:
-            print(e)
-            # print(proxies[idx % len(proxies)], glosbe.existed_url[index])
-            f = open(LOG_FOLDER + 'url_existed.txt', 'w')
-            for line in set(glosbe.existed_url):
-                f.write(line.strip() + '\n')
-
-            f.close()
-            # print('Except')
-            driver.quit()
-            driver = glosbe.create_driver(rnd_proxy, adsblock=True)
-
-            glosbe.crawled_url.append(glosbe.existed_url[index])
-            wr_errors.write(glosbe.existed_url[index].strip() + "\n")
-            glosbe.existed_url.pop(index)
-        finally:
-            f = open(LOG_FOLDER + 'url_existed.txt', 'w')
-            for line in set(glosbe.existed_url):
-                f.write(line.strip() + '\n')
-            f.close()
-
-    skip += 4
-    rnd_proxy = proxies[skip % len(proxies)]
-    # print('out loop')
-    driver.quit()
-    driver = glosbe.create_driver(rnd_proxy, adsblock=False)
+                # print('Except')
+                driver.quit()
+                os.system('killall firefox')
+                driver = glosbe.create_driver(rnd_proxy, adsblock=True)
+                open(LOG_FOLDER + 'url_errors.txt', 'a+').write(glosbe.existed_url[index].strip() + "\n")
 
 
-display.stop()
-raise TypeError("There aren't URLs to crawl!")
+            finally:
+                f = open(LOG_FOLDER + 'url_existed.txt', 'w')
+                for line in set(glosbe.existed_url):
+                    f.write(line.strip() + '\n')
+                f.close()
+            time.sleep(30)
+
+        start_at -= 2
+        rnd_proxy = proxies[start_at % len(proxies)]
+        # print('out loop')
+        driver.quit()
+        os.system('killall firefox')
+        time.sleep(120)
+        driver = glosbe.create_driver(rnd_proxy, adsblock=False)
+
+    display.stop()
+    raise TypeError("There aren't URLs to crawl!")
+
+
+# vi_en = threading.Thread(target=run(['', 'vi', 'en', 1]))
+# en_vi = threading.Thread(target=run(['', 'en', 'vi', 2]))
+# try:
+#     en_vi.start()
+#     vi_en.start()
+#     en_vi.join()
+#     vi_en.join()
+# except Exception as e:
+#     print(e)
+#
+argument = sys.argv
+run(argument)
