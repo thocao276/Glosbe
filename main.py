@@ -34,7 +34,7 @@ def read_proxies_file(file_name):
 
     lst_prox = []
     for ii in open(file_name, 'r').readlines():
-        lst_prox.append('http://kimnt93:147828@' + ii.strip())
+        lst_prox.append(['http://kimnt93:147828@' + ii.strip(), 'https://kimnt93:147828@' + ii.strip()])
     return lst_prox
 
 
@@ -45,15 +45,16 @@ class Glosbe:
         self.proxies = proxies
         self.save_dir = save_dir
 
-    def create_driver(self, random_proxy, adsblock):
+    def create_driver(self, proxies, indx, adsblock):
         """
         Create config firefox browser
+        :param indx: index to get proxy in list
         :param adsblock: Just install first time
-        :param random_proxy: list includes 2 ip proxies
+        :param proxies: list ip proxies
         :return:
         """
         # print(random_proxy)
-
+        random_proxy = proxies[indx]
         profile = webdriver.FirefoxProfile()
         profile.set_preference("http.response.timeout", 13)
         profile.set_preference("dom.max_script_run_time", 13)
@@ -73,16 +74,32 @@ class Glosbe:
         # profile.set_preference("plugin.scan.Acrobat", "99.0")
         # profile.set_preference("plugin.scan.plid.all", False)
 
+        # while requests.get('https://glosbe.com/en/vi/-').status_code != 200:
+
+
+        response = requests.get('https://glosbe.com/en/vi/-', proxies={
+                'http': random_proxy[0],
+                'https': random_proxy[1],
+            })
+        while response.status_code != 200:
+            indx += 2
+            random_proxy = proxies[indx]
+            print(random_proxy[0])
+            response = requests.get('https://glosbe.com/en/vi/-', proxies={
+                'http': random_proxy[0],
+                'https': random_proxy[1],
+            })
         options = {
             'proxy': {
-                'http': random_proxy,
-                'https': random_proxy
-                # 'no_proxy': 'localhost,127.0.0.1:8080'
+                'http': random_proxy[0],
+                'https': random_proxy[1],
+                'no_proxy': 'localhost,127.0.0.1:8080'
             },
-            'connection_timeout': 20
+            'connection_timeout': 10,
+            'verify_ssl': False
         }
 
-        if adsblock == True:
+        if adsblock == False:
             profile.add_extension('lib/adblock_plus-3.7-an+fx.xpi')
 
         web_driver = webdriver.Firefox(
@@ -93,6 +110,7 @@ class Glosbe:
 
         # web_driver.get('https://whatismyipaddress.com/')
         # print(random_proxy, web_driver.find_element_by_css_selector('#ipv4 > a').get_attribute('href'))
+
         return web_driver
 
     def login(self, web_driver):
@@ -108,6 +126,7 @@ class Glosbe:
                 # pickle.dump( web_driver.get_cookies() , open("cookies.pkl","wb"))
                 break
             except:
+                time.sleep(5)
                 web_driver.get('https://auth2.glosbe.com/login')
 
     def get_new_keywords(self, web_driver, goto):
@@ -128,6 +147,12 @@ class Glosbe:
         except TimeoutException:
             webdriver.ActionChains(web_driver).send_keys(Keys.ESCAPE).perform()
 
+        try:
+            if web_driver.find_element_by_css_selector('.g-recaptcha'):
+                return ['recaptcha']
+        except:
+            pass
+
         words = web_driver.find_elements_by_css_selector('#wordListContainer > li')
         while len(words) == 0:
             web_driver.refresh()
@@ -138,7 +163,7 @@ class Glosbe:
         for word in words:
             try:
                 key_word = word.find_element_by_css_selector('a').get_attribute('href')
-                if "%2F%2F" in key_word or "%252F%252F" in key_word:
+                if "%252F%252F" in key_word:
                     continue
                 if key_word not in self.existed_url and key_word not in self.crawled_url:
                     # added += 1
@@ -151,7 +176,7 @@ class Glosbe:
                               '    main.py     get_new_keywords()    Loop get new word    ' + goto + ' ' + str(e))
                 pass
         # print('Added ' + str(added) + '/' + str(len(words)) + ' words')
-        time.sleep(0.1)
+        time.sleep(1)
         return errors
 
     def move_crawled(self, index):
@@ -190,8 +215,14 @@ class Glosbe:
         page = 2
         # web_driver.get(goto)
         try:
+            if web_driver.find_element_by_css_selector('.g-recaptcha'):
+                return [], 2, ['recaptcha']
+        except:
+            pass
+
+        try:
             # web_driver.set_page_load_timeout(15)
-            WebDriverWait(web_driver, 17).until(EC.presence_of_element_located((By.ID, "tm-tab-cont")))
+            WebDriverWait(web_driver, 10).until(EC.presence_of_element_located((By.ID, "tm-tab-cont")))
         except TimeoutException:
             errors.append(datetime.now().strftime("%d/%m/%Y, %H:%M:%S") +
                           '    main.py     get_content()    Timeout    ' + goto)
@@ -232,7 +263,13 @@ class Glosbe:
                         page += 1
                         if page == 4 and '>>' in web_driver.find_element_by_css_selector(
                                 '#translationExamples > div.pagination').text:
-                            self.login(web_driver)
+                            try:
+                                if web_driver.find_element_by_css_selector('#topCollapseNavContainer > ul > li:nth-child(3) > a').text == 'My profile':
+                                    pass
+                                else:
+                                    self.login(web_driver)
+                            except:
+                                self.login(web_driver)
                     else:
                         return [line.strip() for line in set(content)], 1, errors
                 except NoSuchElementException:
