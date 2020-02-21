@@ -58,21 +58,21 @@ def write_log(filename, content, istimestone):
 
 
 def run(arg):
-    if len(arg) != 4:
-        # raise TypeError('Must be: python3 crawl_glosbe.py [original] [destination] [step proxy] \n Ex: python3 crawl_glosbe.py en vi 1')
-        arg = ['', 'zh', 'vi', '1']
+    # if len(arg) != 4:
+    #     # raise TypeError('Must be: python3 crawl_glosbe.py [original] [destination] [step proxy] \n Ex: python3 crawl_glosbe.py en vi 1')
+    #     arg = ['', 'zh', 'vi', '1']
     original = arg[1]
     destination = arg[2]
-    start_at = 0
-    # try:
-    #     start_at = int(arg[3])
-    #     if start_at > 10 or start_at < 1:
-    #         raise TypeError('Must be Integer and between 1 and 10')
-    # except:
-    #     raise TypeError('Must be Integer')
+    # start_at = 0
+    try:
+        start_at = int(arg[3])
+        if start_at > 10 or start_at < 1:
+            raise TypeError('Must be Integer and between 1 and 10')
+    except:
+        raise TypeError('Must be Integer')
 
     display = Display(visible=0, size=(800, 600))
-    # display.start()
+    display.start()
     try:
         # Create folder
         LOG_FOLDER = 'log/' + original + '_' + destination + '/'
@@ -124,6 +124,14 @@ def run(arg):
         # print(rnd_proxy)
         glosbe = Glosbe(existed=url_existed, crawled=url_crawled, proxies=proxies, save_dir=save_dir)
         driver = glosbe.create_driver(proxies, start_at, adsblock=True)
+        for request in driver.requests:
+            if request.response:
+                if request.response.status_code != 200:
+                    print('Error 502', start_at)
+                    start_at += 2
+                    driver.quit()
+                    driver = glosbe.create_driver(proxies, start_at, adsblock=True)
+
         index = 0
         """
 		When there isn't any url in existed_url to crawl, get new keywords from last keyword in crawled_url
@@ -142,14 +150,20 @@ def run(arg):
                     write_log(LOG_FOLDER + 'errors.log', 'crawl_glosbe.py    run()    RECAPTCHA get new words    ' +
                               proxies[start_at % len(proxies)][0], False)
                     driver = glosbe.create_driver(proxies, start_at % len(proxies), adsblock=True)
-
+                    for request in driver.requests:
+                        if request.response:
+                            if request.response.status_code != 200:
+                                print('Error 502', start_at)
+                                start_at += 2
+                                driver.quit()
+                                driver = glosbe.create_driver(proxies, start_at, adsblock=True)
                 else:
                     for i in error:
                         write_log(LOG_FOLDER + 'errors.log', i, True)
             idx -= 1
         # raise TypeError("There aren't URLs to crawl!")
         del idx
-
+        print("Start ", original, destination)
         if "%252F%252F" in glosbe.existed_url[index]:
             open(LOG_FOLDER + 'url_errors.txt', 'a+').write(glosbe.existed_url[index].strip() + "\n")
             # print(datetime.now().strftime("%d/%m/%Y, %H:%M:%S") + '    ' + str(len(content)) + '\t' + glosbe.existed_url[index][18:])
@@ -157,7 +171,7 @@ def run(arg):
             glosbe.move_crawled(index)
 
         while index < len(glosbe.existed_url):
-            for j in range(10):
+            for j in range(1):
                 try:
                     # driver.get('https://whatismyipaddress.com/')
 
@@ -243,6 +257,14 @@ def run(arg):
                     driver.quit()
                     # os.system('killall firefox')
                     driver = glosbe.create_driver(proxies, start_at % len(proxies), adsblock=True)
+                    for request in driver.requests:
+                        if request.response:
+                            if request.response.status_code != 200:
+                                print('Error 502', start_at)
+                                start_at += 2
+                                driver.quit()
+                                driver = glosbe.create_driver(proxies, start_at, adsblock=True)
+
                     open(LOG_FOLDER + 'url_errors.txt', 'a+').write(glosbe.existed_url[index].strip() + "\n")
 
                 finally:
@@ -259,12 +281,19 @@ def run(arg):
             # os.system('killall firefox')
             # time.sleep(120)
             driver = glosbe.create_driver(proxies, start_at % len(proxies), adsblock=True)
+            for request in driver.requests:
+                if request.response:
+                    if request.response.status_code != 200:
+                        print('Error 502', start_at)
+                        start_at += 2
+                        driver.quit()
+                        driver = glosbe.create_driver(proxies, start_at, adsblock=True)
     except KeyboardInterrupt:
         os.system('killall firefox')
-        try:
-            display.stop()
-        except:
-            pass
+        # try:
+        #     display.stop()
+        # except:
+        #     pass
     except SystemExit:
         os.system('killall firefox')
         try:
@@ -272,18 +301,20 @@ def run(arg):
         except:
             pass
     # display.stop()
-    raise TypeError("There aren't URLs to crawl!")
+    # raise TypeError("There aren't URLs to crawl!")
+
+# run(["",'vi', 'en', 1])
 
 
 argument = sys.argv
 if len(argument) != 3:
-    raise TypeError('Must be: python3 crawl_glosbe.py [language 1] [language 2] \n Ex: python3 crawl_glosbe.py en vi. \nMeaning crawl English to Vietnamese and Vietnamese to English')
+    raise TypeError('Must be: python3 crawl_glosbe.py [language 1] [language 2] \n Ex: python3 crawl_glosbe.py en vi. \nTo crawl English to Vietnamese and Vietnamese to English')
     # argument = ['', 'zh', 'vi', '1']
-original = argument[1]
-destination = argument[2]
+original_th = argument[1]
+destination_th = argument[2]
 
-vi_en = threading.Thread(target=run, args=[['', original, destination, 1]])
-en_vi = threading.Thread(target=run, args=[['', destination, original, 2]])
+vi_en = threading.Thread(target=run, args=[['', original_th, destination_th, 1]])
+en_vi = threading.Thread(target=run, args=[['', destination_th, original_th, 2]])
 try:
     en_vi.start()
     vi_en.start()

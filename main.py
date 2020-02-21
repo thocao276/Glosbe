@@ -17,6 +17,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 
 
 def write_log(filename, content, istimestone):
@@ -24,6 +25,7 @@ def write_log(filename, content, istimestone):
         open(filename, 'a+').write(content.strip() + '\n')
     else:
         open(filename, 'a+').write(datetime.now().strftime("%d/%m/%Y, %H:%M:%S") + '    ' + content.strip() + '\n')
+
 
 def read_proxies_file(file_name):
     """
@@ -54,7 +56,7 @@ class Glosbe:
         :return:
         """
         # print(random_proxy)
-        random_proxy = proxies[indx]
+        random_proxy = proxies[indx % len(proxies)]
         profile = webdriver.FirefoxProfile()
         profile.set_preference("http.response.timeout", 13)
         profile.set_preference("dom.max_script_run_time", 13)
@@ -74,21 +76,29 @@ class Glosbe:
         # profile.set_preference("plugin.scan.Acrobat", "99.0")
         # profile.set_preference("plugin.scan.plid.all", False)
 
-        # while requests.get('https://glosbe.com/en/vi/-').status_code != 200:
-
-
-        response = requests.get('https://glosbe.com/en/vi/-', proxies={
-                'http': random_proxy[0],
-                'https': random_proxy[1],
-            })
-        while response.status_code != 200:
-            indx += 2
-            random_proxy = proxies[indx]
-            print(random_proxy[0])
+        try:
             response = requests.get('https://glosbe.com/en/vi/-', proxies={
                 'http': random_proxy[0],
-                'https': random_proxy[1],
-            })
+                'https': random_proxy[1]
+            }).status_code
+        except Exception as e:
+            print(e)
+            response = 403
+            print(random_proxy[0])
+
+        while response != 200:
+            indx += 2
+            random_proxy = proxies[indx % len(proxies)]
+            try:
+                response = requests.get('https://glosbe.com/', proxies={
+                    'http': random_proxy[0],
+                    'https': random_proxy[1]
+                }).status_code
+            except Exception as e:
+                print(e)
+                response = 403
+                print(random_proxy[0])
+
         options = {
             'proxy': {
                 'http': random_proxy[0],
@@ -99,18 +109,29 @@ class Glosbe:
             'verify_ssl': False
         }
 
+        # caps = DesiredCapabilities().FIREFOX
+        # caps["pageLoadStrategy"] = "eager"
+
         if adsblock == False:
             profile.add_extension('lib/adblock_plus-3.7-an+fx.xpi')
 
         web_driver = webdriver.Firefox(
             # desired_capabilities=capabilities,
+            # capabilities=caps,
             seleniumwire_options=options,
             firefox_profile=profile,
             executable_path=r'lib/geckodriver-v0.26.0-linux64')
 
-        # web_driver.get('https://whatismyipaddress.com/')
+        web_driver.get('https://glosbe.com/')
+        time.sleep(5)
         # print(random_proxy, web_driver.find_element_by_css_selector('#ipv4 > a').get_attribute('href'))
 
+        # for request in web_driver.requests:
+        #     if request.response:
+        #         if request.response.status_code == 502:
+        #             print('Error 502', random_proxy[0])
+        #             web_driver.quit()
+        #             self.create_driver(proxies, indx + 2, False)
         return web_driver
 
     def login(self, web_driver):
@@ -125,6 +146,7 @@ class Glosbe:
                 web_driver.find_element_by_name('submit').click()
                 # pickle.dump( web_driver.get_cookies() , open("cookies.pkl","wb"))
                 break
+
             except:
                 time.sleep(5)
                 web_driver.get('https://auth2.glosbe.com/login')
@@ -144,6 +166,7 @@ class Glosbe:
         errors = []
         try:
             web_driver.get(goto)
+
         except TimeoutException:
             webdriver.ActionChains(web_driver).send_keys(Keys.ESCAPE).perform()
 
@@ -264,7 +287,8 @@ class Glosbe:
                         if page == 4 and '>>' in web_driver.find_element_by_css_selector(
                                 '#translationExamples > div.pagination').text:
                             try:
-                                if web_driver.find_element_by_css_selector('#topCollapseNavContainer > ul > li:nth-child(3) > a').text == 'My profile':
+                                if web_driver.find_element_by_css_selector(
+                                        '#topCollapseNavContainer > ul > li:nth-child(3) > a').text == 'My profile':
                                     pass
                                 else:
                                     self.login(web_driver)
@@ -327,7 +351,6 @@ class Glosbe:
     #             f.write(ix + "\n")
     #         f.close()
 
-
 # DONE_url = []
 # save_dir = 'URL/'
 #
@@ -367,3 +390,5 @@ class Glosbe:
 #
 #     with open(i, 'w') as data_file:
 #         data = json.dump(data, data_file)
+
+50
