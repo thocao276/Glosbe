@@ -11,27 +11,27 @@ from main import Glosbe, read_proxies_file
  Start at keyword "-" OR the first url in url_existed.txt
  Append new keywords on current page to Existed_url
  Crawl all pair of bilingual sentences and write to "output / original_destination / <file_number>.data" 
-	* File_number: int[0, 1,..]
-	* There are maximum 500.000 lines per file
-	* Format: [en]<'        '>[vi] (8 spaces)
+    * File_number: int[0, 1,..]
+    * There are maximum 500.000 lines per file
+    * Format: [en]<'        '>[vi] (8 spaces)
  Loop with new url in Existed_url
  Sleep 10s per 5min
  
  FILES EXPLAINS:
-	main.py             Class Glosbe
-	crawl_glosbe.py     [Current file] - crawl data config
-	url_crawled.txt     Crawled all data
-	url_empty.txt       Urls haven't data
-	url_errors.txt      Occur some errors (Ex: 502 respond)
-	url_existed.txt     Contain new urls but haven't crawled yet
+    main.py             Class Glosbe
+    crawl_glosbe.py     [Current file] - crawl data config
+    url_crawled.txt     Crawled all data
+    url_empty.txt       Urls haven't data
+    url_errors.txt      Occur some errors (Ex: 502 respond)
+    url_existed.txt     Contain new urls but haven't crawled yet
 """
 
 
 def find_file_name(path):
     """
-	find last file to write
-	:return: INT - file name can write in it
-	"""
+    find last file to write
+    :return: INT - file name can write in it
+    """
     name = []
     for file in glob.glob(path + '*.data'):
         name.append(int(file.split(path)[-1].replace('.data', '')))
@@ -72,7 +72,7 @@ def run(arg):
         raise TypeError('Must be Integer')
 
     display = Display(visible=0, size=(800, 600))
-    display.start()
+    # display.start()
     try:
         # Create folder
         LOG_FOLDER = 'log/' + original + '_' + destination + '/'
@@ -124,18 +124,10 @@ def run(arg):
         # print(rnd_proxy)
         glosbe = Glosbe(existed=url_existed, crawled=url_crawled, proxies=proxies, save_dir=save_dir)
         driver = glosbe.create_driver(proxies, start_at, adsblock=True)
-        for request in driver.requests:
-            if request.response:
-                if request.response.status_code != 200:
-                    print('Error 502', start_at)
-                    start_at += 2
-                    driver.quit()
-                    driver = glosbe.create_driver(proxies, start_at, adsblock=True)
-
         index = 0
         """
-		When there isn't any url in existed_url to crawl, get new keywords from last keyword in crawled_url
-		"""
+        When there isn't any url in existed_url to crawl, get new keywords from last keyword in crawled_url
+        """
         idx = -1
         if len(glosbe.existed_url) == 0 and len(glosbe.crawled_url) == 0:
             glosbe.existed_url.append('https://glosbe.com/' + original + '/' + destination + '/-')
@@ -150,13 +142,11 @@ def run(arg):
                     write_log(LOG_FOLDER + 'errors.log', 'crawl_glosbe.py    run()    RECAPTCHA get new words    ' +
                               proxies[start_at % len(proxies)][0], False)
                     driver = glosbe.create_driver(proxies, start_at % len(proxies), adsblock=True)
-                    for request in driver.requests:
-                        if request.response:
-                            if request.response.status_code != 200:
-                                print('Error 502', start_at)
-                                start_at += 2
-                                driver.quit()
-                                driver = glosbe.create_driver(proxies, start_at, adsblock=True)
+                elif error[0] == '502':
+                    write_log(LOG_FOLDER + 'errors.log',
+                              'crawl_glosbe.py    run()    502    ' +
+                              proxies[start_at % len(proxies)][0], False)
+                    break
                 else:
                     for i in error:
                         write_log(LOG_FOLDER + 'errors.log', i, True)
@@ -171,7 +161,7 @@ def run(arg):
             glosbe.move_crawled(index)
 
         while index < len(glosbe.existed_url):
-            for j in range(1):
+            for j in range(15):
                 try:
                     # driver.get('https://whatismyipaddress.com/')
 
@@ -181,6 +171,11 @@ def run(arg):
                         if error[0] == 'recaptcha':
                             write_log(LOG_FOLDER + 'errors.log',
                                       'crawl_glosbe.py    run()    RECAPTCHA get new words    ' +
+                                      proxies[start_at % len(proxies)][0], False)
+                            break
+                        elif error[0] == '502':
+                            write_log(LOG_FOLDER + 'errors.log',
+                                      'crawl_glosbe.py    run()    502    ' +
                                       proxies[start_at % len(proxies)][0], False)
                             break
                         else:
@@ -257,14 +252,6 @@ def run(arg):
                     driver.quit()
                     # os.system('killall firefox')
                     driver = glosbe.create_driver(proxies, start_at % len(proxies), adsblock=True)
-                    for request in driver.requests:
-                        if request.response:
-                            if request.response.status_code != 200:
-                                print('Error 502', start_at)
-                                start_at += 2
-                                driver.quit()
-                                driver = glosbe.create_driver(proxies, start_at, adsblock=True)
-
                     open(LOG_FOLDER + 'url_errors.txt', 'a+').write(glosbe.existed_url[index].strip() + "\n")
 
                 finally:
@@ -281,13 +268,6 @@ def run(arg):
             # os.system('killall firefox')
             # time.sleep(120)
             driver = glosbe.create_driver(proxies, start_at % len(proxies), adsblock=True)
-            for request in driver.requests:
-                if request.response:
-                    if request.response.status_code != 200:
-                        print('Error 502', start_at)
-                        start_at += 2
-                        driver.quit()
-                        driver = glosbe.create_driver(proxies, start_at, adsblock=True)
     except KeyboardInterrupt:
         os.system('killall firefox')
         # try:
