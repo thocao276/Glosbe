@@ -72,7 +72,7 @@ def run(arg):
         raise TypeError('Must be Integer')
 
     display = Display(visible=0, size=(800, 600))
-    # display.start()
+    display.start()
     try:
         # Create folder
         LOG_FOLDER = 'log/' + original + '_' + destination + '/'
@@ -259,14 +259,14 @@ def run(arg):
                     for line in set(glosbe.existed_url):
                         f.write(line.strip() + '\n')
                     f.close()
-            # time.sleep(30)
+            time.sleep(30)
 
             start_at += 2
             rnd_proxy = proxies[start_at % len(proxies)]
             # print('out loop')
             driver.quit()
             # os.system('killall firefox')
-            # time.sleep(120)
+            time.sleep(90)
             driver = glosbe.create_driver(proxies, start_at % len(proxies), adsblock=True)
     except KeyboardInterrupt:
         os.system('killall firefox')

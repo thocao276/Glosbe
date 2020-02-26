@@ -76,28 +76,28 @@ class Glosbe:
         # profile.set_preference("plugin.scan.Acrobat", "99.0")
         # profile.set_preference("plugin.scan.plid.all", False)
 
-        try:
-            response = requests.get('https://glosbe.com/en/vi/-', proxies={
-                'http': random_proxy[0],
-                'https': random_proxy[1]
-            }).status_code
-        except Exception as e:
-            print(e)
-            response = 403
-            print(random_proxy[0])
-
-        while response != 200:
-            indx += 2
-            random_proxy = proxies[indx % len(proxies)]
-            try:
-                response = requests.get('https://glosbe.com/', proxies={
-                    'http': random_proxy[0],
-                    'https': random_proxy[1]
-                }).status_code
-            except Exception as e:
-                print(e)
-                response = 403
-                print(random_proxy[0])
+        # try:
+        #     response = requests.get('https://glosbe.com/en/vi/-', proxies={
+        #         'http': random_proxy[0],
+        #         'https': random_proxy[1]
+        #     }).status_code
+        # except Exception as e:
+        #     print(e)
+        #     response = 403
+        #     print(random_proxy[0])
+        #
+        # while response != 200:
+        #     indx += 2
+        #     random_proxy = proxies[indx % len(proxies)]
+        #     try:
+        #         response = requests.get('https://glosbe.com/', proxies={
+        #             'http': random_proxy[0],
+        #             'https': random_proxy[1]
+        #         }).status_code
+        #     except Exception as e:
+        #         print(e)
+        #         response = 403
+        #         print(random_proxy[0])
 
         options = {
             'proxy': {
@@ -122,8 +122,7 @@ class Glosbe:
             firefox_profile=profile,
             executable_path=r'lib/geckodriver-v0.26.0-linux64')
 
-        web_driver.get('https://glosbe.com/')
-        time.sleep(5)
+        # web_driver.get('https://glosbe.com/')
         # print(random_proxy, web_driver.find_element_by_css_selector('#ipv4 > a').get_attribute('href'))
 
         # for request in web_driver.requests:
@@ -166,14 +165,19 @@ class Glosbe:
         errors = []
         try:
             web_driver.get(goto)
-
         except TimeoutException:
             webdriver.ActionChains(web_driver).send_keys(Keys.ESCAPE).perform()
 
         try:
             if web_driver.find_element_by_css_selector('.g-recaptcha'):
                 return ['recaptcha']
-        except:
+        except NoSuchElementException:
+            pass
+
+        try:
+            if web_driver.find_element_by_css_selector('h1').text == 'Error response':
+                return ['502']
+        except NoSuchElementException:
             pass
 
         words = web_driver.find_elements_by_css_selector('#wordListContainer > li')
@@ -225,7 +229,6 @@ class Glosbe:
 
     def get_content(self, web_driver, goto):
         """
-
         :param web_driver:
         :param goto: url
         :return: list format ["en \t vi", ...]
