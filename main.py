@@ -1,23 +1,17 @@
 import datetime
-from datetime import datetime
-import glob, shutil, os
-import json
 import random
 import re
 import time
 from builtins import print
-from urllib.parse import urlparse
-# import pickle
-import requests
+from datetime import datetime
+from urllib.parse import unquote
+
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
-from seleniumwire import webdriver
-from selenium.webdriver.common.proxy import Proxy, ProxyType
-from selenium.webdriver.firefox.options import Options
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
+from selenium.webdriver.support.ui import WebDriverWait
+from seleniumwire import webdriver
 
 
 def write_log(filename, content, istimestone):
@@ -40,6 +34,36 @@ def read_proxies_file(file_name):
     return lst_prox
 
 
+def process_content(content):
+    """
+    Clean content before write file
+    :param content:
+    :return:
+    """
+    content = re.sub(r'\[\d+\]', '', content)
+    content = re.sub(r'\n+', '\n', content)
+    content = re.sub(r'Bài liên quan:.*\n', '', content)
+    return content.strip()
+
+
+def login(web_driver):
+    account = [i.split("\t") for i in open('account.txt', 'r').readlines()]
+    # LOGIN by temp-mail
+    web_driver.get('https://auth2.glosbe.com/login')
+    while 1:
+        acc = random.choice(account)
+        try:
+            web_driver.find_element_by_css_selector('#username').send_keys(str(acc[0]))
+            web_driver.find_element_by_css_selector('#password').send_keys(str(acc[1]))
+            web_driver.find_element_by_name('submit').click()
+            # pickle.dump( web_driver.get_cookies() , open("cookies.pkl","wb"))
+            break
+
+        except NoSuchElementException:
+            time.sleep(5)
+            web_driver.get('https://auth2.glosbe.com/login')
+
+
 class Glosbe:
     def __init__(self, existed, crawled, proxies, save_dir):
         self.existed_url = existed
@@ -56,25 +80,10 @@ class Glosbe:
         :return:
         """
         # print(random_proxy)
-        random_proxy = proxies[indx % len(proxies)]
+        random_proxy = self.proxies[indx % len(proxies)]
         profile = webdriver.FirefoxProfile()
         profile.set_preference("http.response.timeout", 13)
         profile.set_preference("dom.max_script_run_time", 13)
-        # profile.set_preference("browser.private.browsing.autostart", False)
-
-        #  Off images
-        # profile.set_preference("permissions.default.image", 2)
-
-        # Download PDF
-        # profile.set_preference("browser.download.folderList", 2)
-        # profile.set_preference("browser.download.manager.showWhenStarting", False)
-        # profile.set_preference("pdfjs.disabled", True)
-        # profile.set_preference("browser.download.dir", '/home/thocao/Documents/Data')
-        # profile.set_preference("browser.helperApps.neverAsk.saveToDisk", "application/pdf")
-
-        # Unable open pdf files in browser
-        # profile.set_preference("plugin.scan.Acrobat", "99.0")
-        # profile.set_preference("plugin.scan.plid.all", False)
 
         # try:
         #     response = requests.get('https://glosbe.com/en/vi/-', proxies={
@@ -112,7 +121,7 @@ class Glosbe:
         # caps = DesiredCapabilities().FIREFOX
         # caps["pageLoadStrategy"] = "eager"
 
-        if adsblock == False:
+        if not adsblock:
             profile.add_extension('lib/adblock_plus-3.7-an+fx.xpi')
 
         web_driver = webdriver.Firefox(
@@ -132,23 +141,6 @@ class Glosbe:
         #             web_driver.quit()
         #             self.create_driver(proxies, indx + 2, False)
         return web_driver
-
-    def login(self, web_driver):
-        account = [i.split("\t") for i in open('account.txt', 'r').readlines()]
-        # LOGIN by temp-mail
-        web_driver.get('https://auth2.glosbe.com/login')
-        while 1:
-            acc = random.choice(account)
-            try:
-                web_driver.find_element_by_css_selector('#username').send_keys(str(acc[0]))
-                web_driver.find_element_by_css_selector('#password').send_keys(str(acc[1]))
-                web_driver.find_element_by_name('submit').click()
-                # pickle.dump( web_driver.get_cookies() , open("cookies.pkl","wb"))
-                break
-
-            except:
-                time.sleep(5)
-                web_driver.get('https://auth2.glosbe.com/login')
 
     def get_new_keywords(self, web_driver, goto):
         """
@@ -176,20 +168,26 @@ class Glosbe:
 
         try:
             if web_driver.find_element_by_css_selector('h1').text == 'Error response':
-                return ['502']
+                web_driver.refresh()
+                time.sleep(2)
+                if web_driver.find_element_by_css_selector('h1').text == 'Error response':
+                    return ['502']
         except NoSuchElementException:
             pass
 
         words = web_driver.find_elements_by_css_selector('#wordListContainer > li')
-        while len(words) == 0:
+        for loop in range(5):
+            if len(words) > 0:
+                break
             web_driver.refresh()
+            time.sleep(2)
             # web_driver = self.create_driver(web_driver, login=False, adsblock=False)
             # web_driver.get(goto)
             words = web_driver.find_elements_by_css_selector('#wordListContainer > li')
         # added = 0
         for word in words:
             try:
-                key_word = word.find_element_by_css_selector('a').get_attribute('href')
+                key_word = unquote(word.find_element_by_css_selector('a').get_attribute('href'))
                 if "%252F%252F" in key_word:
                     continue
                 if key_word not in self.existed_url and key_word not in self.crawled_url:
@@ -216,17 +214,6 @@ class Glosbe:
         #     if i in self.crawled_url:
         #         self.existed_url.pop(self.existed_url.index(i))
 
-    def process_content(self, content):
-        """
-        Clean content before write file
-        :param content:
-        :return:
-        """
-        content = re.sub(r'\[\d+\]', '', content)
-        content = re.sub(r'\n+', '\n', content)
-        content = re.sub(r'Bài liên quan:.*\n', '', content)
-        return content.strip()
-
     def get_content(self, web_driver, goto):
         """
         :param web_driver:
@@ -243,7 +230,7 @@ class Glosbe:
         try:
             if web_driver.find_element_by_css_selector('.g-recaptcha'):
                 return [], 2, ['recaptcha']
-        except:
+        except NoSuchElementException:
             pass
 
         try:
@@ -294,9 +281,9 @@ class Glosbe:
                                         '#topCollapseNavContainer > ul > li:nth-child(3) > a').text == 'My profile':
                                     pass
                                 else:
-                                    self.login(web_driver)
-                            except:
-                                self.login(web_driver)
+                                    login(web_driver)
+                            except NoSuchElementException:
+                                login(web_driver)
                     else:
                         return [line.strip() for line in set(content)], 1, errors
                 except NoSuchElementException:
@@ -312,86 +299,3 @@ class Glosbe:
                     return [line.strip() for line in set(content)], 2, errors
 
         return [line.strip() for line in set(content)], 1, errors
-
-    # def recur_get_lst(self, random_proxy):
-    #     """
-    #     Recursive get new keywords in current page then append list need to crawl
-    #     :param web_driver:
-    #     :param random_proxy: list includes 2 ip proxies
-    #     :return:
-    #     """
-    #     idx = len(self.existed_url) - random.choice(range(1, 9))
-    #     web_driver = self.create_driver(random_proxy=random_proxy, adsblock=False)
-    #     try:
-    #         try:
-    #             if web_driver.find_element_by_css_selector('.g-recaptcha').get_attribute('data-sitekey'):
-    #                 f = open('URL_crawled.txt', 'w', encoding='utf-8')
-    #                 for ix in self.existed_url:
-    #                     f.write(ix + "\n")
-    #                 f.close()
-    #                 web_driver.quit()
-    #                 print('IP is blocked.')
-    #                 open('proxy_err.txt', 'a+').write(str(datetime.datetime.now()) + '\t' + ','.join(random_proxy) + '\n')
-    #                 return
-    #         except:
-    #             pass
-    #         loop = 0
-    #         while round(time.time() % 60) > 4 or loop < 5:
-    #             while idx >= len(self.existed_url):
-    #                 idx -= random.choice(range(1, 4))
-    #             if self.get_new_keywords(web_driver, goto=self.existed_url[idx]) == 0:
-    #                 idx -= 1
-    #                 loop += 1
-    #             else:
-    #                 idx += 10
-    #             #  Write proxies when can't get elements 4 times
-    #             if loop > 4:
-    #                 open('proxy_err.txt', 'a+').write(str(datetime.datetime.now()) + '\t' + ','.join(random_proxy) + '\n')
-    #
-    #     except:
-    #         f = open('URL_crawled.txt', 'w', encoding='utf-8')
-    #         for ix in self.existed_url:
-    #             f.write(ix + "\n")
-    #         f.close()
-
-# DONE_url = []
-# save_dir = 'URL/'
-#
-# files = list(filter(os.path.isfile, glob.glob('URL/*.url')))
-# files.sort(key=lambda x: os.path.getmtime(x))
-# for i in files:
-#     DONE_url.append('https://glosbe.com/en/vi/' + i.replace("URL/", '').replace(".url", ''))
-# print(DONE_url)
-#
-# proxies = read_proxies_file('proxies.txt')
-# rnd_proxy = random.choices(proxies, k=2)
-#
-# while 1:
-#     driver = create_driver(rnd_proxy, login=False, adsblock=True)
-#     # Get all key words in hompage
-#     recur_get_lst(driver, rnd_proxy)
-#     driver.quit()
-#     rnd_proxy = random.choices(proxies, k=2)
-#
-# # Get Example with keyword
-# need_to_crawl = []
-# done = [('https://glosbe.com/en/vi/' + i.replace("DONE/", '').replace(".url", '')) for i in glob.glob('DONE/*.url')]
-# for i in DONE_url:
-#     if i not in done:
-#         need_to_crawl.append(i)
-# need_to_crawl.sort()
-# for i in need_to_crawl:
-#     i.get_content(i, save_dir + i.replace('https://glosbe.com/en/vi/', '') + '.url')
-
-# Delete 25 first rows
-# for i in glob.glob('DONE/*.url'):
-#     with open(i, 'r') as data_file:
-#         data = json.load(data_file)
-#
-#     for j in range(25):
-#         data.pop(str(j), None)
-#
-#     with open(i, 'w') as data_file:
-#         data = json.dump(data, data_file)
-
-50
